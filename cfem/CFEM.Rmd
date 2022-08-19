@@ -1,0 +1,600 @@
+---
+title: "Análises dos Investimentos sobre a População e efeito da CFEM "
+author: "Shayane Dos Santos Cordeiro"
+date: "07/10/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pacman)
+pacman :: p_load(tidyverse, ggplot2, reshape2, gam, data.table, readxl,betareg, broom, gridExtra,readr, fitdistrplus,  hnp, car, vcd, pscl, MASS, corrplot,pixiedust, kableExtra,
+                 formattable)
+
+setwd("C:/Users/luizg/OneDrive/Documentos/IPEA/DADOS/BASE_FINBRA_INVESTIMENTO_CFEM")
+base       <- read.csv2("investimentos_finbra_cfem_pop.csv")
+base_total <- read.csv2("investimentos_finbra_cfem_pop_total.csv")
+options(scipen = 999)
+
+base        <- base %>% rename(UF = "SiglaEstado")
+base$UF     <- toupper(base$UF)
+base_total  <- base_total %>% rename(UF = "SiglaEstado")
+base_total$UF <- toupper(base_total$UF)
+```
+
+
+
+# Introdução
+
+Conhecer a finalidade dos recursos arrecadados  é de grande importância para o desenvolvimento de uma nação, principalmente do ponto de vista econômico. 
+Diversas são as fontes dos recursos de um ente da federação (Estado, Distrito Federal e Municípios), seja em impostos, investimentos ou repasses da União. 
+O objetivo do presente estudo é utilizar os dados de uma dessas fontes e verificar correlações utilizando um Modelo Linear Generalizado (MLG). 
+
+# Metodologia 
+
+Os dados utilizados são públicos e contém informações acerca de investimentos na saúde (SIOPS), educação (SIOPE), infraestrutura (FINBRA), Compensação Financeira pela Exploração de Minerais (CFEM), receita corrente líquida (FINBRA) e população residente (IBGE) a nível municipal.
+
+Para formar a base de dados utilizada no presente estudo foram realizados alguns ajustes. Os dados investimentos correspondem ao total investido em saúde, educação e infraestrutura. As bases foram unidas através dos códigos dos municípios (IBGE) e ano do investimento utilizando o comando \textit{full\_join}, a fim de considerar todos os valores independente de ter correspondências entre os códigos dos munícipios e anos.
+
+Os dados da CFEM correspondem a distribuições financeiras mensais para municípios que produzem ou são afetados pela  exploração de recursos minerais. Para esses dados foi feito o agrupamento anual considerando a soma do valor distribuído por mês para o município correspondente.
+Foi realizada a união das bases receita corrente líquida, investimentos (saúde, educação e infraestrutura) e CFEM utilizando o código do município (IBGE) e Ano como referência, utilizando o comando \textit{full\_join} para assegurar que todos os municípios, independente de correspondência com outra base, fossem adicionados. Assim a base contemplaria tanto municípios que distribuem quanto municípios que não distribuem CFEM , porém declararam o valor investido  em pelo menos uma das áreas em estudo ou a receita corrente líquida do município.
+
+A base ajustada anteriormente foi unida a segunda base que contém tamanho da população utilizando um \textit{lef_join} , porém considerando apenas os municípios presentes na primeira base.
+
+Para a modelagem dos dados serão consideradas as variáveis explicativas Unidade da Federação (UF), Ano e se o município é distribuidor sim/não de CFEM e como variável resposta a soma dos investimentos em educação, saúde e públicos sobre a receita líquida do respectivo município, ou sobre o tamanho da população (investimento per capita). 
+
+Para tratamento dos valores ausentes a princípio será utilizada considerada a média da respectiva variável em anos anteriores para município.  
+
+
+
+
+
+\newpage
+
+# Base de dados
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ll}
+\hline
+Variável      & Descrição\\
+\hline
+Ano           & Ano da observação do dado.\\
+UF            & Unidade da Federação. \\
+Receita Total & Receitas diversas. Fonte: IPEA.2015-2019\\
+Receita       & Receita corrente líquida. Fonte: FINBRA. 2015-2020\\
+Educação      & Investimentos em educação: Fonte: SIOPE.2015-2029 \\
+Saúde         & Investimentos em saúde Fonte: SIOPS. 2015-2020 \\
+Público       & Investimento em infraestrutura. Fonte: FINBRA.2015-2020\\
+CFEM          & Valor distribuído de CFEM (Município Produtor e Afetado). Fonte: ANM.2015-2020\\
+Distribuidor de CFEM  & 0 - não; 1 - sim. \\
+População     & Tamanho da população. Fonte: IBGE. 2015-2020 \\
+PIB           & Produto Interno Bruto. Fonte: IBGE. 2015-2018\\
+\hline
+\end{tabular}
+\end{table}
+
+
+# Medidas Descritivas
+
+```{r des1}
+
+summary(base[,8:12])
+```
+
+
+\newpage
+```{r d1}
+
+tab_01 = data.frame(
+Variável = c("Receita", "Saúde", "Público","Educação"),
+Mínimo = c(comma(min(base$Receita,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+           comma(min(base$Saude,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") , 
+           comma(min(base$Publico,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+           comma(min(base$Educacao,na.rm = TRUE), digits =2L, format = "f", big.mark = ",")),
+  
+Máximo = c(comma(max(base$Receita,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+           comma(max(base$Saude,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") , 
+           comma(max(base$Publico,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+           comma(max(base$Educacao,na.rm = TRUE), digits =2L, format = "f", big.mark = ",")),
+  
+Média = c(comma(mean(base$Receita,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(mean(base$Saude,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") , 
+          comma(mean(base$Publico,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(mean(base$Educacao,na.rm = TRUE), digits =2L, format = "f", big.mark = ",")),
+  
+Mediana = c(comma(median(base$Receita,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(median(base$Saude,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") , 
+          comma(median(base$Publico,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(median(base$Educacao,na.rm = TRUE), digits =2L, format = "f", big.mark = ",")),
+  
+Desvio = c(comma(sd(base$Receita,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(sd(base$Saude,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") , 
+          comma(sd(base$Publico,na.rm = TRUE), digits =2L, format = "f", big.mark = ",") ,
+          comma(sd(base$Educacao,na.rm = TRUE), digits =2L, format = "f", big.mark = ","))
+)
+
+kbl(tab_01, booktabs = T) %>%
+kable_styling(font_size = 10,latex_options = c("striped", "hold_position"))
+ 
+```
+
+\newpage
+# Tratamento dos Valores Ausentes
+
+## Considerando o percentual investido sobre a receita corrente líquida
+
+```{r p1}
+dados1 <- base  %>% filter((is.na(Receita) | Receita > 0)&(is.na(Saude) | Saude> 0 ))
+
+dados1 <- dados1 %>% group_by(Cod.IBGE)%>%
+          mutate(., Receita  = replace_na(Receita, mean(Receita, na.rm = TRUE)),
+                    Saude    = replace_na(Saude, mean(Saude, na.rm = TRUE)), 
+                    Publico  = replace_na(Publico, mean(Publico, na.rm = TRUE)),
+                    Educacao = replace_na(Educacao, mean(Educacao, na.rm = TRUE)))%>%
+          mutate( Distribuidor = ifelse(Cfem>0, 1)) %>%
+          mutate(., Distribuidor = replace_na(Distribuidor,0)) %>%
+          filter((Receita != "NaN")&(Educacao != "NaN")&
+                 (Saude != "NaN")&(Publico != "NaN"))%>% 
+          mutate(Invest = Educacao + Saude + Publico) %>%
+          mutate(Invest_per = (Invest/Receita)*100, Saude_per = (Saude/Receita)*100,
+                 Publico_per = (Publico/Receita)*100, Educacao_per = (Educacao/Receita)*100)
+nrow(base)
+nrow(base) - nrow(dados1)
+nrow(dados1)/nrow(base)
+```
+
+\newpage
+
+## Considerando o investimento per capita.
+
+```{r p5}
+
+base1 <- base  %>% filter((is.na(Saude) | Saude> 0 ))
+
+base1 <- base1 %>% group_by(Cod.IBGE)%>%
+          mutate(., Saude    = replace_na(Saude, mean(Saude, na.rm = TRUE)), 
+                    Publico  = replace_na(Publico, mean(Publico, na.rm = TRUE)),
+                    Educacao = replace_na(Educacao, mean(Educacao, na.rm = TRUE)))%>%
+          mutate( Distribuidor = ifelse(Cfem>0, 1)) %>%
+          mutate(., Distribuidor = replace_na(Distribuidor,0)) %>%
+          filter((Educacao != "NaN")&(Saude != "NaN")&(Publico != "NaN"))%>% 
+          mutate(Invest = Educacao + Saude + Publico) %>%
+          mutate(Invest_per = (Invest/População), Saude_per = (Saude/População),
+                 Publico_per = (Publico/População), Educacao_per = (Educacao/População))
+nrow(base)
+nrow(base1)
+nrow(base) - nrow(base1)
+nrow(base1)/nrow(base)
+```
+
+
+\newpage
+# Comportamento da Variável Resposta
+
+
+
+```{r fig.width = 8, fig.height = 3.5}
+
+g1 <- ggplot(dados1,aes(x = Invest_per,  y = ..density..,)) +
+      geom_histogram( fill = 'white', color = 'black') +
+      labs(title = "Percentual investido sobre \n a receita corrente líquida. 2015-2020",
+      x = "Investimento", y = "Densidade")+ geom_density(alpha=.2, fill="#FF6666") +
+     geom_vline(aes(xintercept=mean(Invest_per)), color="blue", linetype="dashed", size=1)
+
+g2 <- ggplot(base1,aes(x = Invest_per,  y = ..density..,)) +
+      geom_histogram( fill = 'white', color = 'black') +
+      labs(title = "Investimento per capita. 2015-2020", x = "Investimento", y = "Densidade")+
+      geom_density(alpha=.2, fill="#FF6666") +
+      geom_vline(aes(xintercept=mean(Invest_per)), color="blue", linetype="dashed", size=1)
+
+grid.arrange(g1,g2, ncol=2)
+```
+
+Os histogramas apresentam o comportamento da variável resposta que apresenta assimetria e cauda pesada.
+
+\newpage
+
+## Percentual investido sobre a receita corrente líquida
+```{r sum1}
+summary(dados1$Invest_per)
+```
+
+
+## Investimento per capita
+
+```{r sum2}
+summary(base1$Invest_per)
+```
+
+
+A vantagem de utilizar a população no lugar da receita corrente líquida é problemas que podem ocorrer ao substituir o NA pela média. Caso fossem substituídos pela média apenas os dados dos investimentos (educação, saúde e infraestrutura), a perda de observações seria de aproximadamente 50\%, para contornar este problema, também foram substituídos os valores ausentes da receita corrente líquida por sua média a nível do município.
+
+Ao se utilizar o tamanho da  população, além de não ocorrer perda expressiva dos dados, cerca de 1\% foram perdidos, o viés de substituir um valor não observado pela média é muito menor. Outro ponto a destacar é a possibilidade de um intervalo de tempo maior e consequentemente mais observações, além da interpretação da variável investimento per capita ser mais clara.
+
+
+\newpage
+
+# Análise Univariada
+
+Para identificar se os estados que seriam utilizados na modelagem conteriam o minímo de observações necessárias para a análise foi realizado o gráfico a seguir.
+
+```{r data1}
+tabela1    <- base1 %>% group_by(UF)   %>% summarise(total=n( ))
+data_prop1 <- tabela1 %>% group_by(UF) %>%  mutate(prop=(total/sum(tabela1$total)))
+#Forma de ordenar 
+#idx        <-  order(tabela1$prop , decreasing = TRUE)
+#levels     <- tabela1$UF[idx]
+#tabela1$UF <- factor(tabela1$UF, levels=levels, ordered=TRUE)
+
+# Forma simples
+tabela2    <- prop.table(table(base1$Distribuidor)) %>% as.data.frame
+tabela3    <- prop.table(table(base1$Ano)) %>% as.data.frame
+
+
+```
+
+
+```{r fig.width = 8, fig.height = 3}
+ggplot(data_prop1
+       , aes(x = fct_reorder(UF, prop, .desc = TRUE), y = prop))+
+geom_col(fill="#FF6666",position = "dodge") +
+scale_y_continuous(labels = scales::percent)+theme_bw()+
+labs(title = "Proporção do número de municípios por Estado. 2015-2020.", x = " ",y = "Proporção")
+```
+
+
+\newpage
+
+
+
+```{r fig.width =8, fig.height = 3.5}
+tabela2$Var1 <- as.character(tabela2$Var1)
+tabela2$Var1[tabela2$Var1=="1"] <-"Sim"
+tabela2$Var1[tabela2$Var1=="0"] <-"Não"
+
+g1<- ggplot(tabela2, aes(x =factor(Var1), y = Freq)) +
+     geom_col(fill="#FF6666",position = "dodge",  width = .4) +
+     scale_y_continuous(labels = scales::percent)+ theme_bw()+
+     labs(title = " ", x = " ",y = "Proporção")  
+
+g2<- ggplot(tabela3, aes(x =Var1, y =Freq)) +
+     geom_col(fill="#FF6666",position = "dodge",  width = .4) +
+     scale_y_continuous(labels = scales::percent)+theme_bw()+
+     labs(title = " .", x = " ",y = "Proporção")
+
+grid.arrange(g1,g2, ncol=2,top ="Proporção do número de municípios. 2015-2020")
+```
+
+\newpage
+
+Para efeitos de análise será considerado:
+\begin{itemize}
+\item 0: quem não arrecada/distribui CFEM
+\item 1: quem arrecada/distribui CFEM
+\end{itemize}
+
+```{r fim6}
+
+tabela1 <- base1 %>% filter(Distribuidor == "1") %>% 
+                  group_by(UF) %>% summarise(Sim = n())
+tabela2 <- base1 %>% filter(Distribuidor == "0") %>%
+                  group_by(UF) %>% summarise(Nao = n())
+tab     <- merge(tabela1,tabela2)
+
+tab1_2015 <- base1 %>% filter(Distribuidor == "1", Ano== "2015") %>% 
+                  group_by(UF) %>% summarise(Sim_2015 = n())
+tab2_2015 <- base1 %>% filter(Distribuidor == "0", Ano== "2015") %>%
+                  group_by(UF) %>% summarise(Nao_2015 = n())
+
+tab1_2016 <- base1 %>% filter(Distribuidor == "1", Ano== "2016") %>% 
+                  group_by(UF) %>% summarise(Sim_2016 = n())
+tab2_2016 <- base1 %>% filter(Distribuidor == "0", Ano== "2016") %>%
+                  group_by(UF) %>% summarise(Nao_2016 = n())
+
+tab1_2017 <- base1 %>% filter(Distribuidor == "1", Ano== "2017") %>% 
+                  group_by(UF) %>% summarise(Sim_2017 = n())
+tab2_2017 <- base1 %>% filter(Distribuidor == "0", Ano== "2017") %>%
+                  group_by(UF) %>% summarise(Nao_2017 = n())
+
+tab1_2018 <- base1 %>% filter(Distribuidor == "1", Ano== "2018") %>% 
+                  group_by(UF) %>% summarise(Sim_2018 = n())
+tab2_2018 <- base1 %>% filter(Distribuidor == "0", Ano== "2018") %>%
+                  group_by(UF) %>% summarise(Nao_2018 = n())
+
+tab1_2019 <- base1 %>% filter(Distribuidor == "1", Ano== "2019") %>% 
+                  group_by(UF) %>% summarise(Sim_2019 = n())
+tab2_2019 <- base1 %>% filter(Distribuidor == "0", Ano== "2019") %>%
+                  group_by(UF) %>% summarise(Nao_2019 = n())
+
+tab1_2020 <- base1 %>% filter(Distribuidor == "1", Ano== "2020") %>% 
+                  group_by(UF) %>% summarise(Sim_2020 = n())
+tab2_2020 <- base1 %>% filter(Distribuidor == "0", Ano== "2020") %>%
+                  group_by(UF) %>% summarise(Nao_2020 = n())
+
+
+tab1 <- full_join(tab1_2015, tab2_2015, by="UF")
+tab2 <- full_join(tab1_2016, tab2_2016, by="UF")
+tab3 <- full_join(tab1_2017, tab2_2017, by="UF")
+tab4 <- full_join(tab1_2018, tab2_2018, by="UF")
+tab5 <- full_join(tab1_2019, tab2_2019, by="UF")
+tab6 <- full_join(tab1_2020, tab2_2020, by="UF")
+              
+table <- tab1 %>% full_join(tab2, by="UF") %>% full_join(tab3, by="UF") %>%
+full_join(tab4,by="UF") %>% full_join(tab5,by="UF") %>%full_join(tab6,by="UF")
+```
+
+\newpage
+
+
+```{r fim7}
+kbl(table, booktabs = T) %>%
+kable_styling(font_size = 10,
+              position = "left",latex_options = c("striped", "scale_down"))
+
+```
+
+
+\newpage
+
+```{r fim10}
+
+tb_2015<-base1 %>% filter( Ano == "2015") %>% with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>%  as.data.frame.matrix( )
+tb_2016<-base1 %>% filter( Ano == "2016") %>% with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>% as.data.frame.matrix( )
+tb_2017<-base1 %>% filter( Ano == "2017") %>% with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>% as.data.frame.matrix( )
+tb_2018<-base1 %>% filter( Ano == "2018") %>% with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>% as.data.frame.matrix( )
+tb_2019<-base1 %>% filter( Ano == "2019") %>% with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>% as.data.frame.matrix( )
+tb_2020<-base1 %>% filter( Ano == "2020") %>%with(table(UF, Distribuidor))%>%
+         prop.table(.,1) %>% round(2) %>% as.data.frame.matrix( )
+
+tb1 <- cbind(tb_2015,tb_2016,tb_2017,tb_2018,tb_2019,tb_2020)
+kbl(tb1, longtable = T, booktabs = T) %>%
+    add_header_above(c(" ", "2015" = 2, "2016" = 2,"2017" = 2, 
+                     "2018" = 2, "2019" =2, "2020" = 2)) %>%
+    kable_styling(latex_options = c("repeat_header"))
+
+
+```
+
+
+
+\newpage
+
+```{r fig.width = 8.5, fig.height = 3.5}
+
+tabela1 <- base1 %>% filter(Distribuidor == "1") %>% 
+                  group_by(UF) %>% summarise(Total = n()) %>% mutate(Distribuidor = "Sim")
+tabela2 <- base1 %>% filter(Distribuidor == "0") %>%
+                  group_by(UF) %>% summarise(Total = n()) %>% mutate(Distribuidor = "Não")
+tab     <- rbind(tabela1,tabela2)
+
+prop <- round(prop.table(table(base1$UF,base1$Distribuidor),1),2) %>% as.data.frame
+
+prop <- prop %>% rename(UF = "Var1")
+prop <- prop %>% rename(Distribuidor = "Var2")
+prop$Distribuidor <- as.character(prop$Distribuidor)
+prop$Distribuidor[prop$Distribuidor == "0" ] <- "Não"
+prop$Distribuidor[prop$Distribuidor == "1"] <- "Sim"
+
+ggplot(prop, aes(x = UF, y = Freq , fill = Distribuidor)) +
+geom_bar(stat = "identity",  width = .7) + 
+theme(axis.text.x=element_text(angle = 90, vjust = 0.5)) +
+geom_text(aes(label = Freq),position = position_stack(0.4),angle = 90,size = 2)+
+labs(title = "Proporção por Estado dos municípios que distribuem ou não CFEM.
+     2015-2020.", x = " ",y = "Proporção")
+
+
+```
+\newpage
+
+
+# Análise bivariada: variáveis explicativas versus resposta.
+
+```{r fig.width = 8, fig.height = 6}
+
+p1<-qplot(factor(Distribuidor), Invest_per, data=base1,
+          geom="boxplot",color=factor(Distribuidor),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "Distribuidor de CFEM", y = "Investimento per capita")
+
+p2<-qplot(factor(Distribuidor), Saude_per, data=base1,
+          geom="boxplot",color=factor(Distribuidor),  show.legend = FALSE) + 
+theme_bw(  ) + labs(title = " ",x = "Distribuidor de CFEM", y = "Saúde per capita")
+
+p3<-qplot(factor(Distribuidor), Publico_per, data=base1,
+          geom="boxplot",color=factor(Distribuidor),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "Distribuidor de CFEM", y = "Público per capita")
+
+p4<-qplot(factor(Distribuidor), Educacao_per, data=base1,
+          geom="boxplot",color=factor(Distribuidor),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "Distribuidor de CFEM", y = "Educação per capita")
+grid.arrange(p1,p2, p3, p4,top ="Investimentos per capita.  2015-2020")
+```
+
+
+
+\newpage
+
+```{r fig.width = 12, fig.height = 9}
+
+p1<-qplot(factor(UF), Invest_per, data=base1,
+          geom="boxplot",color=factor(UF),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "UF", y = "Investimento per capita")
+
+p2<-qplot(factor(UF), Saude_per, data=base1,
+          geom="boxplot",color=factor(UF),  show.legend = FALSE) + 
+theme_bw(  ) + labs(title = " ",x = "UF", y = "Saúde per capita")
+
+p3<-qplot(factor(UF), Publico_per, data=base1,
+          geom="boxplot",color=factor(UF),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "UF", y = "Público per capita")
+
+p4<-qplot(factor(UF), Educacao_per, data=base1,
+          geom="boxplot",color=factor(UF),  show.legend = FALSE) + 
+theme_bw ( ) + labs(title = " ",x = "UF", y = "Educação per capita")
+grid.arrange(p1,p2, p3, p4, top="Investimentos per capita por Estado.  2015-2020" )
+```
+
+
+\newpage
+
+# Modelagem considerando dados de cauda pesada 
+
+Considerando ajustes para distribuições de cauda pesada gama, lognormal e normal com diferentes funções de ligação: inversa, log e identidade, para o conjunto de dados com 33817 observações a análise do gráfico envelope, que avalia os quantis dos resíduos ajustados versus os empirícos, indicou que acima de 90\% dos pontos ficaram fora da região de banda com 95\% de confiança. 
+Suspeitando de valores extremos, foi realizado um ajuste para valores acima de 50 e abaixo de 3000. A distribuição que melhor se ajustou foi a lognomral com ligação identidade.
+
+
+
+```{r  fig.width = 7.5, fig.height =2.5}
+base1$UF[base1$UF     == "MG"]    <- "A_MG"
+base2 <- base1 %>% filter((Invest_per < 3000)&(Invest_per > 50) )
+nrow(base1) - nrow(base2)
+ggplot(base2,aes(x = Invest_per,  y = ..density..,)) +
+geom_histogram( fill = 'white', color = 'black') +
+labs(title = "Investimento per capita considerando o intervalo: 50 < Invest. < 30000. 2015-2020",
+x = "Investimento", y = "Densidade")+geom_density(alpha=.2, fill="#FF6666") +
+geom_vline(aes(xintercept=mean(Invest_per)), color="blue", linetype="dashed", size=1)
+
+lnmod3 <- glm(log(Invest_per) ~ UF + Distribuidor + factor(Ano) +
+                UF*Distribuidor, data = base2, family="gaussian"(link = "identity"))
+tabela <- dust(lnmod3) %>%  sprinkle(col = 2:4, round = 3) %>% 
+          sprinkle(col = 5, fn = quote(pvalString(value))) %>% 
+          sprinkle_colnames(term = "Termos", estimate = "Estimativas", 
+                            std.error = "SE",statistic = "T-Estatística", 
+          p.value = "P-Valor") %>% kbl( booktabs = T, longtable = TRUE) %>%
+          kable_styling(font_size = 7,latex_options = c("striped", "hold_position"))
+```
+\newpage
+
+```{r fim2}
+tabela
+```
+
+\newpage
+
+## Interpretação dos parâmetros
+
+\begin{itemize}
+\item Equação do modelo: $\beta_0 + \beta_1 UF + \beta_2Distribuidor + \beta_3 Ano + \beta_4 UF*Distribuidor$
+\item Quando $\beta_2 =0$, ou seja, o município não distribui CFEM
+
+\begin{itemize}
+\item $$\beta_0 + \beta_1 UF + \beta_20 + \beta_3 Ano + \beta_4 UF*0 = \beta_0 + \beta_1UF + \beta_3 Ano$$
+\item[1)] O valor esperado para investimentos per capita no RJ para municípios não distribuidores de CFEM é MAIOR em 0.283 comparado com municípios não distribuidores de CFEM em Minas Gerais.
+\item[2)] O valor esperado para investimentos per capita no PR para municípios não distribuidores de CFEM é MAIOR em 0.688  comparado com municípios não distribuidores de CFEM em Minas Gerais.
+\item[3)]  O valor esperado para investimentos per capita no PA para municípios não distribuidores de CFEM é MENOR em -0.062  comparado com municípios não distribuidores de CFEM em Minas Gerais.
+
+\item[3)]  O valor esperado para investimentos per capita em SP para municípios não distribuidores de CFEM é MAIOR em 0.234  comparado com municípios não distribuidores de CFEM em Minas Gerais.
+
+\end{itemize}
+
+\item Quando $\beta_2 =1$, ou seja, o município distribui CFEM
+
+\begin{itemize}
+
+
+\item $$\beta_0 + \beta_1 UF + \beta_21 + \beta_3 Ano + \beta_4 UF*1 = \beta_0 + \beta_1UF + \beta_2 +  \beta_3 Ano + \beta_4 * UF$$
+
+\item $$ =  (\beta_0  + \beta_2) + (\beta_1 + \beta_4)UF +  \beta_3 Ano $$
+
+
+\item[1)] O valor esperado para investimentos per capita no PR para municípios  distribuidores de CFEM é MAIOR em (-0.225 + 0.688 = 0.463) comparado com municípios distribuidores de CFEM em Minas Gerais.
+\item[2)]  O valor esperado para investimentos per capita no PA para municípios distribuidores de CFEM é MAIOR em (-0.062 + 0.099 = 0.037) comparado com municípios distribuidores de CFEM em Minas Gerais.
+
+\item[3)]  O valor esperado para investimentos per capita em SP para municípios distribuidores de CFEM é MAIOR em (-0.1 + 0.234= 0.134) comparado com municípios distribuidores de CFEM em Minas Gerais.
+
+\end{itemize}
+
+\end{itemize}
+
+\newpage
+
+```{r fig.width = 6, fig.height =4}
+#Ligação identidade
+hnp( lnmod3$residuals , sim = 99 , resid.type =" deviance " ,
+     how.many.out=T , conf = 0.99 , scale = T)
+
+```
+
+
+\newpage
+
+O interesse é saber qual o percentual para as categorias da variável unidade da federação e distribuidor  foram afetados. 
+
+```{r fig.width = 8, fig.height = 3.5}
+base1$UF[base1$UF == "A_MG"] <- "MG"
+base1 %>% group_by(UF) %>% summarise(Total = n()) %>% 
+ggplot(aes(x = fct_reorder(UF, Total, .desc = TRUE), y = Total)) + 
+geom_col(fill="#FF6666",position = "dodge")+   
+geom_text(aes(label = Total), vjust = 1,size = 2) + theme_bw() + 
+labs(title ="Total de municípios  analisados por Estado. 2015-2020. Antes do ajuste do intervalo ",
+     x = " ",y = "Total")
+
+base2$UF[base2$UF == "A_MG"] <- "MG"
+base2 %>% group_by(UF) %>% summarise(Total = n()) %>% 
+ggplot(aes(x = fct_reorder(UF, Total, .desc = TRUE), y = Total)) + 
+geom_col(fill="#FF6666",position = "dodge")+   
+geom_text(aes(label = Total), vjust = 1,size = 2) + theme_bw() + 
+labs(title ="Total de municípios  analisados por Estado. 2015-2020. Após o ajuste do intervalo ",
+     x = " ",y = "Total")
+```
+
+\newpage
+
+```{r fig.width = 8, fig.height = 3.5}
+tabela7 <- base1 %>% group_by(UF) %>% summarise(Total1 = n()) 
+tabela8 <- base2 %>% group_by(UF) %>% summarise(Total2 = n()) 
+tab1 <- merge(tabela7, tabela8)
+tab1 <- tab1 %>% mutate(A_Completa = round(Total1/(Total1 + Total2),3), 
+                        A_Intervalo= round(Total2/(Total1 + Total2),3)) 
+    
+untidy <- tab1%>% 
+  pivot_longer(
+    cols = A_Completa:A_Intervalo, # as colunas desse intervalo
+    names_to = "Base", # terão seus nomes armazenados nessa nova coluna
+    names_prefix = "A_", # pegar apenas os nomes que vem depois de 'ano_'
+    values_to = "Prop") # e os seus valores armazenados nessa nova coluna
+
+
+
+ggplot(untidy, aes(x = UF, y = Prop , fill = Base)) +
+geom_bar(stat = "identity",  width = .7) + theme( ) +
+geom_text(aes(label = Prop),position = position_stack(0.4),angle = 90,size = 2)+
+labs(title = "Proporção por Estado dos municípios na base completa e na intervalar.2015-2020.", 
+     x = " ",y = "Proporção")
+
+  
+```
+
+
+
+
+\newpage
+
+
+
+```{r fig.width = 8, fig.height = 3.5, include=FALSE}
+tabela9  <- base1 %>% group_by(Distribuidor) %>% summarise(Base1 = n())
+tabela10 <- base2 %>% group_by(Distribuidor) %>% summarise(Base2 = n())
+
+tab1     <- left_join(tabela9, tabela10, by="Distribuidor")
+
+tab1$Distribuidor <- as.character(tab1$Distribuidor)
+tab1$Distribuidor[tab1$Distribuidor == "0" ] <- "Não"
+tab1$Distribuidor[tab1$Distribuidor == "1"] <- "Sim"
+
+ggplot(tab1, aes(x = Distribuidor)) +
+geom_bar(aes(y = Base1),stat = "identity",fill = "#F8766D",
+    width = .3, position = position_nudge(x = -.15))+
+geom_bar(aes(y = Base2),stat = "identity",fill = "#00BFC4",
+    width = .3,position = position_nudge(x = .15)) + theme_bw() +
+   labs(title = " ", x = "Distribuidor",y = "casos")
+  
+```
+
+
+

@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+dados
+resultados
+dbeaver/credentials*.*
+base_recomendada.csv
+export_rda.R
