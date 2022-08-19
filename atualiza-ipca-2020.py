@@ -7,7 +7,7 @@ import requests
 import json
 
 def slack_notificatin(ano, hour, minutes, seconds):
-    web_hook_url = 'https://hooks.slack.com/services/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'
+    web_hook_url = 'https://hooks.slack.com/services/--------------'
     slack_msg = {'text':f'''Finalizado rem_ipea_2020 em tb_vinculos_{ano}
     Tempo: {int(hour)}h, {int(minutes)}min, {round(seconds,2)}s'''}
     requests.post(web_hook_url, data=json.dumps(slack_msg))
@@ -16,7 +16,7 @@ def slack_notificatin(ano, hour, minutes, seconds):
 
 def main():
     try:
-        conn = psycopg2.connect(database="rais_2019", user = "i3geow", password = "ipea001", host = "10.3.40.10", port = "5432") #Conectar ao servidor PostgreSQL
+        conn = psycopg2.connect(database="rais_xxxx", user = "i3xxx", password = "ipeaxxx", host = "xxxxxxx", port = "5432") #Conectar ao servidor PostgreSQL
         cur = conn.cursor()
 
         inicio = time.no
